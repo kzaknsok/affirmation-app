@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>音声読み上げプレーヤー</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Noto+Serif+JP:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+
+    :root {
+      /* 高級感漂うライトラグジュアリー・パレット */
+      --bg-color: #f7f5f0;
+      --card-bg: rgba(255, 255, 255, 0.85);
+      --card-border: rgba(212, 184, 150, 0.35);
+      
+      --text-primary: #1c2331;      /* 深みのあるミッドナイトネイビー */
+      --text-secondary: #7a7369;    /* エレガントなシャンパンベージュ */
+      --accent-gold: #c5a059;       /* 上質なマットゴールド */
+      
+      /* ソフトネオングロー用カラー */
+      --neon-glow-primary: rgba(230, 160, 110, 0.45);
+      --neon-glow-secondary: rgba(212, 175, 55, 0.35);
+      --btn-grad-start: #1c2536;
+      --btn-grad-end: #0f1623;
+      
+      --modal-bg: rgba(253, 252, 250, 0.95);
+      --border-light: rgba(226, 218, 205, 0.6);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', 'Noto Serif JP', -apple-system, BlinkMacSystemFont, serif;
+      background: radial-gradient(circle at 50% 20%, #fefcf9 0%, #f4eee5 100%);
+      color: var(--text-primary);
+      height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    /* メインプレーヤーカード（ガラスモフィズム＆立体感） */
+    .player-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      width: 100%;
+      max-width: 440px;
+      padding: 48px 28px;
+      border-radius: 32px;
+      border: 1px solid var(--card-border);
+      box-shadow: 
+        0 20px 40px -15px rgba(180, 160, 130, 0.15),
+        0 0 80px -20px rgba(255, 255, 255, 0.8) inset;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 40px;
+      position: relative;
+    }
+
+    /* ブランドロゴアクセント */
+    .app-brand {
+      font-family: 'Cinzel', serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.25em;
+      color: var(--accent-gold);
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    /* タイトル選択エリア */
+    .title-selector {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 16px;
+      transition: all 0.3s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .title-selector:hover {
+      background-color: rgba(197, 160, 89, 0.06);
+    }
+
+    .title-label {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      display: block;
+      letter-spacing: 0.1em;
+    }
+
+    .current-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      word-break: break-word;
+    }
+
+    .dropdown-icon {
+      font-size: 0.75rem;
+      color: var(--accent-gold);
+      transition: transform 0.3s ease;
+    }
+
+    .title-selector:hover .dropdown-icon {
+      transform: translateY(2px);
+    }
+
+    /* 優しく包み込むソフトネオングローボタン */
+    .play-btn-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 背景でオーラのように輝くパルスアニメーション */
+    .play-btn-wrapper::before {
+      content: '';
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--neon-glow-primary) 0%, var(--neon-glow-secondary) 60%, transparent 100%);
+      filter: blur(16px);
+      opacity: 0.85;
+      transition: all 0.4s ease;
+      animation: neonPulse 3.5s infinite alternate ease-in-out;
+    }
+
+    .play-btn-wrapper:hover::before {
+      opacity: 1;
+      filter: blur(20px);
+      transform: scale(1.15);
+    }
+
+    @keyframes neonPulse {
+      0% {
+        transform: scale(0.95);
+        opacity: 0.7;
+      }
+      100% {
+        transform: scale(1.1);
+        opacity: 0.95;
+      }
+    }
+
+    .play-btn {
+      position: relative;
+      width: 92px;
+      height: 92px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, var(--btn-grad-start), var(--btn-grad-end));
+      color: #fdfaf5;
+      border: 1px solid rgba(212, 184, 150, 0.4);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 
+        0 10px 25px rgba(15, 22, 35, 0.25),
+        0 0 15px rgba(230, 160, 110, 0.3) inset;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+      -webkit-tap-highlight-color: transparent;
+      z-index: 1;
+    }
+
+    .play-btn:active {
+      transform: scale(0.92);
+    }
+
+    .play-btn svg {
+      width: 32px;
+      height: 32px;
+      fill: #fdfaf5;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    }
+
+    /* モーダル表示用スタイル */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(28, 35, 49, 0.3);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.35s ease;
+      z-index: 100;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-content {
+      background: var(--modal-bg);
+      width: 100%;
+      max-width: 480px;
+      max-height: 75dvh;
+      border-radius: 32px 32px 0 0;
+      padding: 32px 24px;
+      border-top: 1px solid rgba(212, 184, 150, 0.4);
+      box-shadow: 0 -10px 40px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      transform: translateY(100%);
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-overlay.open .modal-content {
+      transform: translateY(0);
+    }
+
+    @media (min-width: 640px) {
+      .modal-overlay {
+        align-items: center;
+      }
+      .modal-content {
+        border-radius: 32px;
+        border: 1px solid rgba(212, 184, 150, 0.4);
+      }
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-light);
+      margin-bottom: 16px;
+    }
+
+    .modal-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: 0.05em;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.6rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px;
+      transition: color 0.2s ease;
+    }
+
+    .close-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .playlist {
+      list-style: none;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-right: 4px;
+    }
+
+    .playlist::-webkit-scrollbar {
+      width: 4px;
+    }
+    .playlist::-webkit-scrollbar-thumb {
+      background: var(--card-border);
+      border-radius: 4px;
+    }
+
+    .playlist-item {
+      padding: 18px 20px;
+      border-radius: 16px;
+      border: 1px solid var(--border-light);
+      background: rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.25s ease;
+    }
+
+    .playlist-item:hover {
+      background: rgba(255, 255, 255, 0.95);
+      border-color: var(--accent-gold);
+    }
+
+    .playlist-item.active {
+      border-color: var(--accent-gold);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(247, 241, 230, 0.8));
+      box-shadow: 0 4px 15px rgba(197, 160, 89, 0.12);
+    }
+
+    .item-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text-primary);
+      line-height: 1.4;
+    }
+
+    .playlist-item.active .item-title {
+      color: #9e7a33;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- メイン画面 -->
+  <main class="player-card">
+    <div class="app-brand">Audio Player</div>
+
+    <button class="title-selector" id="btn-open-list" aria-label="コンテンツリストを開く">
+      <span class="title-label">選択中のコンテンツ</span>
+      <div class="current-title">
+        <span id="display-title">読み込み中...</span>
+        <span class="dropdown-icon">▼</span>
+      </div>
+    </button>
+
+    <div class="play-btn-wrapper">
+      <button class="play-btn" id="btn-play" aria-label="再生・一時停止">
+        <svg id="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+    </div>
+  </main>
+
+  <!-- リストモーダル -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">コンテンツ一覧</span>
+        <button class="close-btn" id="btn-close-list">&times;</button>
+      </div>
+      <ul class="playlist" id="playlist"></ul>
+    </div>
+  </div>
+
+  <script>
+    let playlistData = [];
+    let currentIndex = 0;
+    let isPlaying = false;
+    const synth = window.speechSynthesis;
+    let currentUtterance = null;
+
+    // DOM要素
+    const displayTitle = document.getElementById('display-title');
+    const btnPlay = document.getElementById('btn-play');
+    const playIcon = document.getElementById('play-icon');
+    const modalOverlay = document.getElementById('modal-overlay');
+    const btnOpenList = document.getElementById('btn-open-list');
+    const btnCloseList = document.getElementById('btn-close-list');
+    const playlistEl = document.getElementById('playlist');
+
+    // SVG アイコン
+    const SVG_PLAY = '<path d="M8 5v14l11-7z"/>';
+    const SVG_PAUSE = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+
+    async function loadData() {
+      try {
+        const response = await fetch('script.json');
+        playlistData = await response.json();
+        if (playlistData.length > 0) {
+          updateUI();
+          renderPlaylist();
+        } else {
+          displayTitle.textContent = "データが存在しません";
+        }
+      } catch (error) {
+        displayTitle.textContent = "読み込みエラー";
+        console.error(error);
+      }
+    }
+
+    function updateUI() {
+      const item = playlistData[currentIndex];
+      displayTitle.textContent = item ? item.title : "";
+      playIcon.innerHTML = isPlaying ? SVG_PAUSE : SVG_PLAY;
+    }
+
+    function renderPlaylist() {
+      playlistEl.innerHTML = '';
+      playlistData.forEach((item, index) => {
+        const li = document.createElement('li');
+        li.className = `playlist-item ${index === currentIndex ? 'active' : ''}`;
+        li.innerHTML = `<div class="item-title">${item.title}</div>`;
+        li.addEventListener('click', () => {
+          selectTrack(index);
+          closeModal();
+        });
+        playlistEl.appendChild(li);
+      });
+    }
+
+    function selectTrack(index) {
+      synth.cancel();
+      currentIndex = index;
+      isPlaying = false;
+      updateUI();
+      renderPlaylist();
+      playText();
+    }
+
+    function togglePlay() {
+      if (playlistData.length === 0) return;
+
+      if (synth.speaking) {
+        if (synth.paused) {
+          synth.resume();
+          isPlaying = true;
+        } else {
+          synth.pause();
+          isPlaying = false;
+        }
+      } else {
+        playText();
+      }
+      updateUI();
+    }
+
+    function playText() {
+      synth.cancel();
+
+      const item = playlistData[currentIndex];
+      currentUtterance = new SpeechSynthesisUtterance(item.text);
+      currentUtterance.lang = 'ja-JP';
+
+      currentUtterance.onend = () => {
+        if (currentIndex < playlistData.length - 1) {
+          currentIndex++;
+          updateUI();
+          renderPlaylist();
+          playText();
+        } else {
+          isPlaying = false;
+          updateUI();
+        }
+      };
+
+      currentUtterance.onerror = () => {
+        isPlaying = false;
+        updateUI();
+      };
+
+      synth.speak(currentUtterance);
+      isPlaying = true;
+      updateUI();
+    }
+
+    function openModal() { modalOverlay.classList.add('open'); }
+    function closeModal() { modalOverlay.classList.remove('open'); }
+
+    btnPlay.addEventListener('click', togglePlay);
+    btnOpenList.addEventListener('click', openModal);
+    btnCloseList.addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+
+    loadData();
+  </script>
+</body>
+</html>
