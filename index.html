@@ -435,11 +435,18 @@
     const SVG_PAUSE = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
 
     // iPhone/Safari対策：利用可能な日本語音声を読み込む
+    // 音声リストを読み込む処理を強化
     function loadVoices() {
       const voices = synth.getVoices();
-      const jaVoices = voices.filter(v => v.lang.includes('ja') || v.lang.includes('JP'));
+      // 日本語の音声を抽出（より広範囲にキャッチ）
+      const jaVoices = voices.filter(v => 
+        v.lang.includes('ja') || v.lang.includes('JP') || v.lang === 'ja_JP'
+      );
 
+      // 既存の選択肢を一度クリアして最新状態に更新
+      const currentSelected = voiceSelect.value;
       voiceSelect.innerHTML = '';
+
       if (jaVoices.length === 0) {
         const option = document.createElement('option');
         option.textContent = '標準日本語音声';
@@ -447,19 +454,35 @@
         return;
       }
 
-      jaVoices.forEach((voice, index) => {
+      jaVoices.forEach((voice) => {
         const option = document.createElement('option');
         option.value = voice.name;
-        option.textContent = `${voice.name} (${voice.lang})`;
-        if (index === 0) selectedVoice = voice; // デフォルトに設定
+        // 声の名称を表示（例: Otoya, Kyoko, Siriなど）
+        option.textContent = `${voice.name}`;
         voiceSelect.appendChild(option);
       });
+
+      // 保持していた選択肢を復元、なければ最初の声を選択
+      if (currentSelected && jaVoices.some(v => v.name === currentSelected)) {
+        voiceSelect.value = currentSelected;
+      } else {
+        selectedVoice = jaVoices[0];
+      }
     }
 
-    // 音声のリスト生成（Safari用の遅延読み込み対応）
+    // iOS Safari対策：設定モーダルを開く際にも音声リストを強制更新
+    btnOpenSettings.addEventListener('click', () => {
+      loadVoices();
+      openModal(modalSettings);
+    });
+
+    // iOS Safari対策：イベント監視と定期チェックのダブル待ち
     if (speechSynthesis.onvoiceschanged !== undefined) {
       speechSynthesis.onvoiceschanged = loadVoices;
     }
+    
+    // 画面ロード後少し遅れて再度音声リストを取得する（Safariの遅延対策）
+    setTimeout(loadVoices, 500);
 
     // JSONデータの読み込み
     async function loadData() {
