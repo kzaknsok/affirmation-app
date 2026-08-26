@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>音声再生プレーヤー</title>
+  <title>音声読み上げプレーヤー</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Noto+Serif+JP:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
 
@@ -338,14 +338,11 @@
 </head>
 <body>
 
-  <!-- 非表示の音声再生要素 -->
-  <audio id="audio-player"></audio>
-
   <!-- メインプレーヤーカード -->
   <main class="player-card">
     <div class="card-header">
       <div style="width: 28px;"></div> <!-- レイアウト調整用スペース -->
-      <div class="app-brand">Audio Player</div>
+      <div class="app-brand">Speech Player</div>
       <button class="settings-icon-btn" id="btn-open-settings" aria-label="設定を開く">
         <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
       </button>
@@ -398,8 +395,7 @@
       <div class="setting-group">
         <div class="setting-label">音声の種類</div>
         <select id="voice-select" class="select-box">
-          <option value="male">男性声</option>
-          <option value="female">女性声</option>
+          <option value="">デフォルト（自動）</option>
         </select>
       </div>
     </div>
@@ -409,11 +405,12 @@
     let playlistData = [];
     let currentIndex = 0;
     let isPlaying = false;
-    let selectedVoiceKey = 'female'; // デフォルトで選択する音声タイプキー
+    let selectedVoice = null;
     let playbackRate = 1.0;
 
+    const synth = window.speechSynthesis;
+
     // DOM要素
-    const audioPlayer = document.getElementById('audio-player');
     const displayTitle = document.getElementById('display-title');
     const btnPlay = document.getElementById('btn-play');
     const playIcon = document.getElementById('play-icon');
@@ -436,29 +433,58 @@
     const SVG_PLAY = '<path d="M8 5v14l11-7z"/>';
     const SVG_PAUSE = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
 
+    // 音声リストの取得
+    function loadVoices() {
+      const voices = synth.getVoices();
+      const jaVoices = voices.filter(v => 
+        v.lang.includes('ja') || v.lang.includes('JP') || v.lang === 'ja_JP'
+      );
+
+      const currentSelected = voiceSelect.value;
+      voiceSelect.innerHTML = '';
+
+      if (jaVoices.length === 0) {
+        const option = document.createElement('option');
+        option.textContent = '標準日本語音声';
+        voiceSelect.appendChild(option);
+        return;
+      }
+
+      jaVoices.forEach((voice) => {
+        const option = document.createElement('option');
+        option.value = voice.name;
+        option.textContent = `${voice.name}`;
+        voiceSelect.appendChild(option);
+      });
+
+      if (currentSelected && jaVoices.some(v => v.name === currentSelected)) {
+        voiceSelect.value = currentSelected;
+        selectedVoice = jaVoices.find(v => v.name === currentSelected);
+      } else {
+        selectedVoice = jaVoices[0];
+      }
+    }
+
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+      speechSynthesis.onvoiceschanged = loadVoices;
+    }
+    setTimeout(loadVoices, 500);
+
     // JSONデータの読み込み
     async function loadData() {
       try {
         const response = await fetch('script.json');
+        if (!response.ok) throw new Error('Network error');
         playlistData = await response.json();
         if (playlistData.length > 0) {
           updateUI();
           renderPlaylist();
-          loadCurrentAudio();
         } else {
           displayTitle.textContent = "データが存在しません";
         }
       } catch (error) {
+        console.error(error);
         displayTitle.textContent = "読み込みエラー";
-      }
-    }
-
-    // 現在選択中のトラックの音声ファイルをプレイヤーにセット
-    function loadCurrentAudio() {
-      const item = playlistData[currentIndex];
-      if (item && item.voices && item.voices[selectedVoiceKey]) {
-        audioPlayer.src = item.voices[selectedVoiceKey];
-        audioPlayer.playbackRate = playbackRate;
       }
     }
 
@@ -482,49 +508,75 @@
       });
     }
 
-    async function selectTrack(index) {
-      audioPlayer.pause();
+    function selectTrack(index) {
+      synth.cancel();
       currentIndex = index;
-      loadCurrentAudio();
+      isPlaying = false;
       updateUI();
       renderPlaylist();
-      
-      try {
-        await audioPlayer.play();
-        isPlaying = true;
-      } catch (e) {
-        isPlaying = false;
-      }
-      updateUI();
+      playText();
     }
 
-    async function togglePlay() {
+    function togglePlay() {
       if (playlistData.length === 0) return;
 
       if (isPlaying) {
-        audioPlayer.pause();
-        isPlaying = false;
-      } else {
-        try {
-          await audioPlayer.play();
-          isPlaying = true;
-        } catch (error) {
-          console.warn("再生エラー:", error);
+        // 再生中の場合は一時停止（または停止）
+        if (synth.speaking && !synth.paused) {
+          synth.pause();
           isPlaying = false;
+        } else {
+          synth.cancel();
+          isPlaying = false;
+        }
+      } else {
+        // 一時停止からの再開、あるいは新規再生
+        if (synth.paused) {
+          synth.resume();
+          isPlaying = true;
+        } else {
+          playText();
         }
       }
       updateUI();
     }
 
-    // 音声終了時に自動で次のトラックへ移動
-    audioPlayer.addEventListener('ended', () => {
-      if (currentIndex < playlistData.length - 1) {
-        selectTrack(currentIndex + 1);
-      } else {
+    function playText() {
+      synth.cancel(); // 前の音声をキャンセル
+
+      const item = playlistData[currentIndex];
+      if (!item || !item.text) return;
+
+      const utterance = new SpeechSynthesisUtterance(item.text);
+      utterance.lang = 'ja-JP';
+      utterance.rate = playbackRate;
+      
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+
+      utterance.onend = () => {
+        if (currentIndex < playlistData.length - 1) {
+          currentIndex++;
+          updateUI();
+          renderPlaylist();
+          playText();
+        } else {
+          isPlaying = false;
+          updateUI();
+        }
+      };
+
+      utterance.onerror = (e) => {
+        console.error("読み上げエラー:", e);
         isPlaying = false;
         updateUI();
-      }
-    });
+      };
+
+      synth.speak(utterance);
+      isPlaying = true;
+      updateUI();
+    }
 
     // モーダル制御
     function openModal(modal) { modal.classList.add('open'); }
@@ -535,7 +587,10 @@
     btnOpenList.addEventListener('click', () => openModal(modalList));
     btnCloseList.addEventListener('click', () => closeModal(modalList));
 
-    btnOpenSettings.addEventListener('click', () => openModal(modalSettings));
+    btnOpenSettings.addEventListener('click', () => {
+      loadVoices();
+      openModal(modalSettings);
+    });
     btnCloseSettings.addEventListener('click', () => closeModal(modalSettings));
 
     [modalList, modalSettings].forEach(modal => {
@@ -544,36 +599,22 @@
       });
     });
 
-    // 再生速度のリアルタイム更新
+    // 設定変更
     rateRange.addEventListener('input', (e) => {
       playbackRate = parseFloat(e.target.value);
       rateValue.textContent = `${playbackRate.toFixed(1)}x`;
-      audioPlayer.playbackRate = playbackRate;
+      if (isPlaying) playText();
     });
 
-    // 声色の変更イベント
-    voiceSelect.addEventListener('change', async (e) => {
-      selectedVoiceKey = e.target.value;
-      const wasPlaying = isPlaying;
-      
-      audioPlayer.pause();
-      const currentTime = audioPlayer.currentTime; // 現在の再生位置を保持
-      loadCurrentAudio();
-      
-      if (wasPlaying) {
-        audioPlayer.currentTime = currentTime;
-        try {
-          await audioPlayer.play();
-          isPlaying = true;
-        } catch (err) {
-          isPlaying = false;
-        }
-      }
-      updateUI();
+    voiceSelect.addEventListener('change', (e) => {
+      const voices = synth.getVoices();
+      selectedVoice = voices.find(v => v.name === e.target.value) || null;
+      if (isPlaying) playText();
     });
 
     // 初期化
     loadData();
+    loadVoices();
   </script>
 </body>
 </html>
