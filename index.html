@@ -280,17 +280,6 @@
       justify-content: space-between;
     }
 
-    .select-box {
-      width: 100%;
-      padding: 14px 16px;
-      border-radius: 12px;
-      border: 1px solid var(--border-light);
-      background-color: rgba(255, 255, 255, 0.8);
-      font-size: 0.95rem;
-      color: var(--text-primary);
-      outline: none;
-    }
-
     /* カスタムスライダー */
     .range-slider {
       width: 100%;
@@ -391,12 +380,13 @@
         <input type="range" id="rate-range" class="range-slider" min="0.5" max="2.0" step="0.1" value="1.0">
       </div>
 
-      <!-- 音声(声質)選択 -->
+      <!-- 音量コントロール -->
       <div class="setting-group">
-        <div class="setting-label">音声の種類</div>
-        <select id="voice-select" class="select-box">
-          <option value="">デフォルト（自動）</option>
-        </select>
+        <div class="setting-label">
+          <span>音量</span>
+          <span id="volume-value">100%</span>
+        </div>
+        <input type="range" id="volume-range" class="range-slider" min="0" max="1" step="0.05" value="1">
       </div>
     </div>
   </div>
@@ -405,10 +395,10 @@
     let playlistData = [];
     let currentIndex = 0;
     let isPlaying = false;
-    let selectedVoice = null;
     let playbackRate = 1.0;
-
-    const synth = window.speechSynthesis;
+    
+    // オーディオ要素の設定
+    const audio = new Audio();
 
     // DOM要素
     const displayTitle = document.getElementById('display-title');
@@ -427,48 +417,12 @@
     // 設定要素
     const rateRange = document.getElementById('rate-range');
     const rateValue = document.getElementById('rate-value');
-    const voiceSelect = document.getElementById('voice-select');
+    const volumeRange = document.getElementById('volume-range');
+    const volumeValue = document.getElementById('volume-value');
 
     // SVG アイコン
     const SVG_PLAY = '<path d="M8 5v14l11-7z"/>';
     const SVG_PAUSE = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
-
-    // 音声リストの取得
-    function loadVoices() {
-      const voices = synth.getVoices();
-      const jaVoices = voices.filter(v => 
-        v.lang.includes('ja') || v.lang.includes('JP') || v.lang === 'ja_JP'
-      );
-
-      const currentSelected = voiceSelect.value;
-      voiceSelect.innerHTML = '';
-
-      if (jaVoices.length === 0) {
-        const option = document.createElement('option');
-        option.textContent = '標準日本語音声';
-        voiceSelect.appendChild(option);
-        return;
-      }
-
-      jaVoices.forEach((voice) => {
-        const option = document.createElement('option');
-        option.value = voice.name;
-        option.textContent = `${voice.name}`;
-        voiceSelect.appendChild(option);
-      });
-
-      if (currentSelected && jaVoices.some(v => v.name === currentSelected)) {
-        voiceSelect.value = currentSelected;
-        selectedVoice = jaVoices.find(v => v.name === currentSelected);
-      } else {
-        selectedVoice = jaVoices[0];
-      }
-    }
-
-    if (speechSynthesis.onvoiceschanged !== undefined) {
-      speechSynthesis.onvoiceschanged = loadVoices;
-    }
-    setTimeout(loadVoices, 500);
 
     // JSONデータの読み込み
     async function loadData() {
@@ -476,8 +430,9 @@
         const response = await fetch('script.json');
         if (!response.ok) throw new Error('Network error');
         playlistData = await response.json();
+        
         if (playlistData.length > 0) {
-          updateUI();
+          loadTrack(currentIndex);
           renderPlaylist();
         } else {
           displayTitle.textContent = "データが存在しません";
@@ -486,6 +441,24 @@
         console.error(error);
         displayTitle.textContent = "読み込みエラー";
       }
+    }
+
+    // トラックの読み込み（パス解決対応）
+    function loadTrack(index) {
+      const item = playlistData[index];
+      if (!item) return;
+
+      // item.file が指定されていれば優先、無ければ file_1.wav のようにフォールバック
+      let fileSrc = item.file || item.filename || `file_${index + 1}.wav`;
+      
+      // 'audio/' ディレクトリ補正
+      if (!fileSrc.startsWith('audio/') && !fileSrc.startsWith('/audio/')) {
+        fileSrc = `audio/${fileSrc}`;
+      }
+
+      audio.src = fileSrc;
+      audio.playbackRate = playbackRate;
+      updateUI();
     }
 
     function updateUI() {
@@ -509,74 +482,56 @@
     }
 
     function selectTrack(index) {
-      synth.cancel();
       currentIndex = index;
-      isPlaying = false;
-      updateUI();
+      loadTrack(currentIndex);
       renderPlaylist();
-      playText();
+      playAudio();
     }
 
     function togglePlay() {
       if (playlistData.length === 0) return;
 
       if (isPlaying) {
-        // 再生中の場合は一時停止（または停止）
-        if (synth.speaking && !synth.paused) {
-          synth.pause();
-          isPlaying = false;
-        } else {
-          synth.cancel();
-          isPlaying = false;
-        }
+        audio.pause();
       } else {
-        // 一時停止からの再開、あるいは新規再生
-        if (synth.paused) {
-          synth.resume();
-          isPlaying = true;
-        } else {
-          playText();
-        }
+        playAudio();
       }
-      updateUI();
     }
 
-    function playText() {
-      synth.cancel(); // 前の音声をキャンセル
-
-      const item = playlistData[currentIndex];
-      if (!item || !item.text) return;
-
-      const utterance = new SpeechSynthesisUtterance(item.text);
-      utterance.lang = 'ja-JP';
-      utterance.rate = playbackRate;
-      
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-      }
-
-      utterance.onend = () => {
-        if (currentIndex < playlistData.length - 1) {
-          currentIndex++;
-          updateUI();
-          renderPlaylist();
-          playText();
-        } else {
-          isPlaying = false;
-          updateUI();
-        }
-      };
-
-      utterance.onerror = (e) => {
-        console.error("読み上げエラー:", e);
+    function playAudio() {
+      audio.play().then(() => {
+        isPlaying = true;
+        updateUI();
+      }).catch(error => {
+        console.error("再生エラー:", error);
         isPlaying = false;
         updateUI();
-      };
+      });
+    }
 
-      synth.speak(utterance);
+    // オーディオイベントの設定
+    audio.addEventListener('play', () => {
       isPlaying = true;
       updateUI();
-    }
+    });
+
+    audio.addEventListener('pause', () => {
+      isPlaying = false;
+      updateUI();
+    });
+
+    // 連続再生処理（トラック終了時）
+    audio.addEventListener('ended', () => {
+      if (currentIndex < playlistData.length - 1) {
+        currentIndex++;
+        loadTrack(currentIndex);
+        renderPlaylist();
+        playAudio();
+      } else {
+        isPlaying = false;
+        updateUI();
+      }
+    });
 
     // モーダル制御
     function openModal(modal) { modal.classList.add('open'); }
@@ -586,11 +541,7 @@
     btnPlay.addEventListener('click', togglePlay);
     btnOpenList.addEventListener('click', () => openModal(modalList));
     btnCloseList.addEventListener('click', () => closeModal(modalList));
-
-    btnOpenSettings.addEventListener('click', () => {
-      loadVoices();
-      openModal(modalSettings);
-    });
+    btnOpenSettings.addEventListener('click', () => openModal(modalSettings));
     btnCloseSettings.addEventListener('click', () => closeModal(modalSettings));
 
     [modalList, modalSettings].forEach(modal => {
@@ -602,19 +553,18 @@
     // 設定変更
     rateRange.addEventListener('input', (e) => {
       playbackRate = parseFloat(e.target.value);
+      audio.playbackRate = playbackRate;
       rateValue.textContent = `${playbackRate.toFixed(1)}x`;
-      if (isPlaying) playText();
     });
 
-    voiceSelect.addEventListener('change', (e) => {
-      const voices = synth.getVoices();
-      selectedVoice = voices.find(v => v.name === e.target.value) || null;
-      if (isPlaying) playText();
+    volumeRange.addEventListener('input', (e) => {
+      const volume = parseFloat(e.target.value);
+      audio.volume = volume;
+      volumeValue.textContent = `${Math.round(volume * 100)}%`;
     });
 
     // 初期化
     loadData();
-    loadVoices();
   </script>
 </body>
 </html>
