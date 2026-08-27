@@ -424,12 +424,24 @@
     const SVG_PLAY = '<path d="M8 5v14l11-7z"/>';
     const SVG_PAUSE = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
 
-    // JSONデータの読み込み
+    // JSONデータの読み込み部分を以下のように調整
     async function loadData() {
       try {
         const response = await fetch('script.json');
         if (!response.ok) throw new Error('Network error');
-        playlistData = await response.json();
+        
+        const rawData = await response.json();
+        
+        // 文字列の配列なら、自動的に { title, file } のオブジェクト配列に整形する
+        playlistData = rawData.map(item => {
+          if (typeof item === 'string') {
+            return {
+              title: item.replace(/\.[^/.]+$/, ""), // 拡張子をカットして表示名にする
+              file: item                            // 元のファイル名
+            };
+          }
+          return item; // すでにオブジェクト形式ならそのまま
+        });
         
         if (playlistData.length > 0) {
           loadTrack(currentIndex);
